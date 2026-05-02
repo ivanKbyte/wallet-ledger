@@ -57,7 +57,7 @@ public class WalletService {
                 .findByWalletIdAndIdempotencyKey(wallet.getId(), idempotencyKey)
                 .orElseGet(() -> {
                     Transaction tx = new Transaction(wallet.getId(), TransactionType.CREDIT, amount, reference, idempotencyKey);
-                    transactionRepository.save(tx);
+                    transactionRepository.saveAndFlush(tx);
                     walletRepository.creditBalance(wallet.getId(), amount);
                     return tx;
                 });
@@ -72,13 +72,20 @@ public class WalletService {
                 .orElseGet(() -> {
                     int updated = walletRepository.debitBalance(wallet.getId(), amount);
                     if (updated == 0) {
-                        long actualBalance = walletRepository.findByUserId(userId)
-                                .map(Wallet::getBalance)
-                                .orElse(0L);
-                        throw new InsufficientBalanceException(actualBalance, amount);
+                        // Before throwing, check if a concurrent request with the same
+                        // idempotency key already committed the debit (which drained the balance).
+                        // If so, return that transaction for an idempotent 200 response.
+                        return transactionRepository
+                                .findByWalletIdAndIdempotencyKey(wallet.getId(), idempotencyKey)
+                                .orElseThrow(() -> {
+                                    long actualBalance = walletRepository.findByUserId(userId)
+                                            .map(Wallet::getBalance)
+                                            .orElse(0L);
+                                    return new InsufficientBalanceException(actualBalance, amount);
+                                });
                     }
                     Transaction tx = new Transaction(wallet.getId(), TransactionType.DEBIT, amount, reference, idempotencyKey);
-                    transactionRepository.save(tx);
+                    transactionRepository.saveAndFlush(tx);
                     return tx;
                 });
     }
