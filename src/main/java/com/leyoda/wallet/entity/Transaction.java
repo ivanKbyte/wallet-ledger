@@ -2,6 +2,7 @@ package com.leyoda.wallet.entity;
 
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -31,9 +32,19 @@ public class Transaction {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    protected Transaction() {}
+
+    public Transaction(UUID walletId, TransactionType type, long amount, String reference, String idempotencyKey) {
+        this.walletId = walletId;
+        this.type = type;
+        this.amount = amount;
+        this.reference = reference;
+        this.idempotencyKey = idempotencyKey;
+    }
+
     @PrePersist
     protected void onCreate() {
-        createdAt = OffsetDateTime.now();
+        createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public UUID getId() { return id; }
@@ -43,10 +54,4 @@ public class Transaction {
     public String getReference() { return reference; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
-
-    public void setWalletId(UUID walletId) { this.walletId = walletId; }
-    public void setType(TransactionType type) { this.type = type; }
-    public void setAmount(long amount) { this.amount = amount; }
-    public void setReference(String reference) { this.reference = reference; }
-    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }
