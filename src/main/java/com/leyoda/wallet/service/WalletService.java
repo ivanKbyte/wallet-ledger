@@ -94,7 +94,10 @@ public class WalletService {
     public Transaction getTransactionByIdempotencyKey(UUID userId, String idempotencyKey) {
         Wallet wallet = getWallet(userId);
         return transactionRepository.findByWalletIdAndIdempotencyKey(wallet.getId(), idempotencyKey)
-                .orElseThrow(() -> new RuntimeException("Idempotency fallback lookup failed unexpectedly"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "Idempotency fallback lookup found no transaction for key " + idempotencyKey
+                                + " on wallet " + wallet.getId()
+                                + " — a DataIntegrityViolationException was caught but the conflicting row is not visible"));
     }
 
     @Transactional(readOnly = true)

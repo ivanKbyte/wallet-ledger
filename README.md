@@ -2,6 +2,8 @@
 
 A RESTful wallet ledger service that supports creating wallets, crediting/debiting funds with idempotency guarantees, and paginated transaction history. Built with Spring Boot 3.5, PostgreSQL 16, and Flyway.
 
+> **Note:** Spring Boot was bumped to 3.5.0 because 3.4.x is no longer served by Spring Initializr. The APIs used in this scope are identical.
+
 ## Prerequisites
 
 - Java 21

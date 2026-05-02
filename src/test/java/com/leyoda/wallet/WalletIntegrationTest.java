@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-class WalletIntegrationTest {
+@SuppressWarnings("null")
+public class WalletIntegrationTest {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -71,7 +72,7 @@ class WalletIntegrationTest {
     }
 
     @Test
-    void happyPath_creditAndDebit_balanceCorrect() {
+    public void happyPath_creditAndDebit_balanceCorrect() {
         createWallet();
         credit(100, "initial-load", "key-credit-1");
 
@@ -88,7 +89,7 @@ class WalletIntegrationTest {
     }
 
     @Test
-    void debit_insufficientBalance_returns422() {
+    public void debit_insufficientBalance_returns422() {
         createWallet();
 
         var resp = restTemplate.exchange(
@@ -101,7 +102,7 @@ class WalletIntegrationTest {
     }
 
     @Test
-    void creditIdempotency_sameKeyTwice_onlyOneTransactionAndBalanceUnchanged() {
+    public void creditIdempotency_sameKeyTwice_onlyOneTransactionAndBalanceUnchanged() {
         createWallet();
 
         var tx1 = credit(100, "load", "key-idem-1");
@@ -115,7 +116,7 @@ class WalletIntegrationTest {
     }
 
     @Test
-    void createWalletTwice_secondReturns409() {
+    public void createWalletTwice_secondReturns409() {
         createWallet();
 
         var second = restTemplate.exchange(
@@ -126,7 +127,7 @@ class WalletIntegrationTest {
     }
 
     @Test
-    void concurrency_tenDebitsTwentyEach_exactlyFiveSucceedAndBalanceIsZero() throws InterruptedException {
+    public void concurrency_tenDebitsTwentyEach_exactlyFiveSucceedAndBalanceIsZero() throws InterruptedException {
         createWallet();
         credit(100, "initial-load", "key-init");
 
@@ -164,5 +165,51 @@ class WalletIntegrationTest {
         var walletResp = restTemplate.exchange(
                 "/wallets/me", HttpMethod.GET, new HttpEntity<>(headers), WalletResponse.class);
         assertThat(Objects.requireNonNull(walletResp.getBody()).balance()).isEqualTo(0);
+    }
+
+    @Test
+    public void getWallet_whenNoWalletExists_returns404() {
+        var resp = restTemplate.exchange(
+                "/wallets/me", HttpMethod.GET, new HttpEntity<>(headers), ErrorResponse.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(Objects.requireNonNull(resp.getBody()).error()).isEqualTo("WALLET_NOT_FOUND");
+    }
+
+    @Test
+    public void credit_invalidBody_returns400Validation() {
+        createWallet();
+
+        var zeroAmount = restTemplate.exchange(
+                "/wallets/me/credit", HttpMethod.POST,
+                new HttpEntity<>(new CreateTransactionRequest(0, "ref", "key-zero"), headers),
+                ErrorResponse.class);
+        assertThat(zeroAmount.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(Objects.requireNonNull(zeroAmount.getBody()).error()).isEqualTo("VALIDATION_ERROR");
+
+        var blankReference = restTemplate.exchange(
+                "/wallets/me/credit", HttpMethod.POST,
+                new HttpEntity<>(new CreateTransactionRequest(10, "  ", "key-blank"), headers),
+                ErrorResponse.class);
+        assertThat(blankReference.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(Objects.requireNonNull(blankReference.getBody()).error()).isEqualTo("VALIDATION_ERROR");
+    }
+
+    @Test
+    public void getTransactions_returnsHistoryNewestFirst() {
+        createWallet();
+        credit(100, "first",  "key-tx-1");
+        credit(50,  "second", "key-tx-2");
+        credit(25,  "third",  "key-tx-3");
+
+        var resp = restTemplate.exchange(
+                "/wallets/me/transactions?page=0&size=10", HttpMethod.GET,
+                new HttpEntity<>(headers), PagedTransactionResponse.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        var body = Objects.requireNonNull(resp.getBody());
+        assertThat(body.totalElements()).isEqualTo(3);
+        assertThat(body.content()).extracting(TransactionResponse::reference)
+                .containsExactly("third", "second", "first");
     }
 }
