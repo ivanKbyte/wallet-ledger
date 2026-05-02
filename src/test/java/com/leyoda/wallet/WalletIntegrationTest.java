@@ -35,13 +35,13 @@ class WalletIntegrationTest {
     @Autowired
     TestRestTemplate restTemplate;
 
-    private UUID userId;
-    private HttpHeaders headers;
+    private UUID userId = UUID.randomUUID();
+    private final HttpHeaders headers = new HttpHeaders();
 
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        headers = new HttpHeaders();
+        headers.clear();
         headers.set("X-User-Id", userId.toString());
         headers.setContentType(MediaType.APPLICATION_JSON);
     }
@@ -50,7 +50,7 @@ class WalletIntegrationTest {
         var resp = restTemplate.exchange(
                 "/wallets", HttpMethod.POST, new HttpEntity<>(headers), WalletResponse.class);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        return resp.getBody();
+        return Objects.requireNonNull(resp.getBody());
     }
 
     private TransactionResponse credit(long amount, String ref, String idempotencyKey) {
@@ -58,7 +58,7 @@ class WalletIntegrationTest {
         var resp = restTemplate.exchange(
                 "/wallets/me/credit", HttpMethod.POST, new HttpEntity<>(body, headers), TransactionResponse.class);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        return resp.getBody();
+        return Objects.requireNonNull(resp.getBody());
     }
 
     private ResponseEntity<String> debitRaw(UUID uid, long amount, String ref, String idempotencyKey) {
@@ -79,12 +79,12 @@ class WalletIntegrationTest {
         var debitResp = restTemplate.exchange(
                 "/wallets/me/debit", HttpMethod.POST, new HttpEntity<>(debitBody, headers), TransactionResponse.class);
         assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(debitResp.getBody().amount()).isEqualTo(30);
+        assertThat(Objects.requireNonNull(debitResp.getBody()).amount()).isEqualTo(30);
 
         var walletResp = restTemplate.exchange(
                 "/wallets/me", HttpMethod.GET, new HttpEntity<>(headers), WalletResponse.class);
         assertThat(walletResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(walletResp.getBody().balance()).isEqualTo(70);
+        assertThat(Objects.requireNonNull(walletResp.getBody()).balance()).isEqualTo(70);
     }
 
     @Test
@@ -97,7 +97,7 @@ class WalletIntegrationTest {
                 ErrorResponse.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
-        assertThat(resp.getBody().error()).isEqualTo("INSUFFICIENT_BALANCE");
+        assertThat(Objects.requireNonNull(resp.getBody()).error()).isEqualTo("INSUFFICIENT_BALANCE");
     }
 
     @Test
@@ -111,7 +111,7 @@ class WalletIntegrationTest {
 
         var walletResp = restTemplate.exchange(
                 "/wallets/me", HttpMethod.GET, new HttpEntity<>(headers), WalletResponse.class);
-        assertThat(walletResp.getBody().balance()).isEqualTo(100);
+        assertThat(Objects.requireNonNull(walletResp.getBody()).balance()).isEqualTo(100);
     }
 
     @Test
@@ -122,7 +122,7 @@ class WalletIntegrationTest {
                 "/wallets", HttpMethod.POST, new HttpEntity<>(headers), ErrorResponse.class);
 
         assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(second.getBody().error()).isEqualTo("WALLET_ALREADY_EXISTS");
+        assertThat(Objects.requireNonNull(second.getBody()).error()).isEqualTo("WALLET_ALREADY_EXISTS");
     }
 
     @Test
@@ -163,6 +163,6 @@ class WalletIntegrationTest {
 
         var walletResp = restTemplate.exchange(
                 "/wallets/me", HttpMethod.GET, new HttpEntity<>(headers), WalletResponse.class);
-        assertThat(walletResp.getBody().balance()).isEqualTo(0);
+        assertThat(Objects.requireNonNull(walletResp.getBody()).balance()).isEqualTo(0);
     }
 }
