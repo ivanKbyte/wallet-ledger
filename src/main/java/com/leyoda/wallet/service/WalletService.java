@@ -84,6 +84,13 @@ public class WalletService {
     }
 
     @Transactional(readOnly = true)
+    public Transaction getTransactionByIdempotencyKey(UUID userId, String idempotencyKey) {
+        Wallet wallet = getWallet(userId);
+        return transactionRepository.findByWalletIdAndIdempotencyKey(wallet.getId(), idempotencyKey)
+                .orElseThrow(() -> new RuntimeException("Idempotency fallback lookup failed unexpectedly"));
+    }
+
+    @Transactional(readOnly = true)
     public Page<Transaction> getTransactions(UUID userId, Pageable pageable) {
         Wallet wallet = getWallet(userId);
         return transactionRepository.findByWalletIdOrderByCreatedAtDesc(wallet.getId(), pageable);
