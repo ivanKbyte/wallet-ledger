@@ -2,18 +2,18 @@
 
 ## 1. What I asked Claude to do
 
-I used Claude to scaffold the service and controller layers for the wallet ledger, with one specific constraint: handle idempotency for `/credit` and `/debit` without JPA `@Version` optimistic locking. I wanted the concurrency story to live at the SQL layer — UNIQUE constraint plus atomic UPDATE — not inside Hibernate retry loops.
+I orchestrated Claude through six sequential phases (Bootstrap, Schema, Service, Web, Tests, Docs) to keep diffs reviewable. I gave it one strict architectural constraint upfront: handle concurrency at the PostgreSQL layer using atomic UPDATE queries and UNIQUE constraints, expressly forbidding JPA `@Version` optimistic locking and Hibernate retry loops.
 
 ## 2. Where Claude got it wrong
 
-**Idempotency error mapping.** Claude routed `DataIntegrityViolationException` from the `(wallet_id, idempotency_key)` UNIQUE constraint to a 409 Conflict in `GlobalExceptionHandler`. That violates the spec — a duplicate must return 200 with the original transaction. The fix isn't trivial: once the constraint fires inside an `@Transactional` service method, the transaction is rollback-only and any subsequent read inside it crashes. I moved the try/catch up to the controller, where after the failed write a separate read-only query fetches the original transaction cleanly.
+**Idempotency error mapping:** Claude routed the idempotency `DataIntegrityViolationException` to a 409 Conflict in `GlobalExceptionHandler`. This violated the spec, which requires returning the original transaction with a 200 OK. Catching this inside the `@Transactional` service was impossible; once the constraint fires, the transaction is rollback-only and further reads crash. I moved the try/catch up to the controller to run a clean, separate read-only query.
 
-**Testcontainers on macOS.** Claude treated the Docker connection as a vanilla env-var problem and injected `DOCKER_API_VERSION` into Gradle. It missed that Testcontainers ships a shaded copy of `docker-java` that reads its API version only from the classpath — so I had to drop a `docker-java.properties` into `src/test/resources`. The next attempt pointed at `docker.raw.sock`, which fixed the API call but broke Ryuk: on macOS the daemon API socket and the volume-mount socket aren't the same path, and Ryuk tried to mount `docker.raw.sock` inside its Linux VM. I disabled Ryuk in `build.gradle.kts` and the test suite went green.
+**Testcontainers on macOS:** Claude treated my Docker connection failure as an env-var issue, injecting `DOCKER_API_VERSION`. It missed that Testcontainers' shaded `docker-java` reads only from the classpath. After I added `docker-java.properties`, Claude pointed it at `docker.raw.sock`. This fixed the API but broke Ryuk: on macOS, the API socket and volume-mount socket differ, and Ryuk tried to mount the raw socket inside its Linux VM. I disabled Ryuk in Gradle to get the tests green.
 
 ## 3. Something I decided myself
 
-Claude annotated the native UPDATE queries with `@Modifying(clearAutomatically = true)`. That clears the persistence context *after* the query runs but doesn't flush *before* it, so a pending `Transaction` INSERT can race the balance update. I added `flushAutomatically = true` so the INSERT hits the DB first. I also pinned `@PrePersist` timestamps to `OffsetDateTime.now(ZoneOffset.UTC)` — without it, timestamps drift with whatever timezone the JVM happens to be in.
+Claude annotated the native UPDATE queries with `@Modifying(clearAutomatically = true)`. That clears the persistence context after the query, but doesn't flush before it, allowing a pending `Transaction` INSERT to race the balance update. I added `flushAutomatically = true` so the INSERT hits the DB first. I also pinned `@PrePersist` timestamps to `OffsetDateTime.now(ZoneOffset.UTC)` to prevent JVM timezone drift.
 
 ## 4. Almost shipped because I trusted too quickly
 
-Claude's first cut of the `Wallet` entity included a `setBalance()` setter — innocuous-looking JPA boilerplate. On a second pass I caught it: any caller could do a read-modify-write through that setter and silently bypass the atomic `debitBalance` query the whole concurrency story rests on. I dropped the setter so balance changes can only flow through the repository UPDATE.
+Claude's initial `Wallet` entity included a `setBalance()` setter — standard JPA boilerplate. On a second pass, I caught the footgun: any caller could do a naive read-modify-write through that setter, silently bypassing the atomic `debitBalance` query my entire concurrency strategy relied on. I deleted the setter to enforce immutability.
